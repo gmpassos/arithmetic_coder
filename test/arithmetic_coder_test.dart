@@ -4,11 +4,18 @@ import 'package:arithmetic_coder/arithmetic_coder.dart';
 import 'package:test/test.dart';
 
 void main() {
-  group('ArithmeticCoder', () {
+  for (var order = 0; order <= 2; ++order) {
+    _testsWithOrder(order);
+  }
+}
+
+void _testsWithOrder(int order) {
+  group('ArithmeticCoder(order: $order)', () {
+    final ac = ArithmeticCoder(order: order);
+
     test('encode and decode empty input', () {
       final input = Uint8List(0);
 
-      var ac = ArithmeticCoder();
       final encoded = ac.encode(input);
       final decoded = ac.decode(encoded);
 
@@ -18,7 +25,6 @@ void main() {
     test('encode and decode single byte', () {
       final input = Uint8List.fromList([42]);
 
-      var ac = ArithmeticCoder();
       final encoded = ac.encode(input);
       final decoded = ac.decode(encoded);
 
@@ -28,7 +34,6 @@ void main() {
     test('encode and decode multiple bytes', () {
       final input = Uint8List.fromList([1, 2, 3, 4, 5, 255, 0, 128]);
 
-      var ac = ArithmeticCoder();
       final encoded = ac.encode(input);
       final decoded = ac.decode(encoded);
 
@@ -38,7 +43,6 @@ void main() {
     test('encode and decode repeated bytes', () {
       final input = Uint8List.fromList(List.filled(100, 7));
 
-      var ac = ArithmeticCoder();
       final encoded = ac.encode(input);
       final decoded = ac.decode(encoded);
 
@@ -48,7 +52,6 @@ void main() {
     test('encode and decode random bytes', () {
       final input = Uint8List.fromList(List.generate(256, (i) => i));
 
-      var ac = ArithmeticCoder();
       final encoded = ac.encode(input);
       final decoded = ac.decode(encoded);
 
@@ -58,7 +61,6 @@ void main() {
     test('encoded size is smaller than input for repeated patterns', () {
       final input = Uint8List.fromList(List.filled(1024, 42));
 
-      var ac = ArithmeticCoder();
       final encoded = ac.encode(input);
 
       expect(encoded.length, lessThan(input.length));
@@ -76,7 +78,6 @@ void main() {
 
       final input = Uint8List.fromList(largeText.codeUnits);
 
-      var ac = ArithmeticCoder();
       final encoded = ac.encode(input);
       final decoded = ac.decode(encoded);
 
@@ -98,7 +99,6 @@ void main() {
 
       final input = Uint8List.fromList(largeText.codeUnits);
 
-      var ac = ArithmeticCoder();
       final encoded = ac.encode(input);
       final decoded = ac.decode(encoded);
 
