@@ -15,8 +15,9 @@
 ///
 /// final input = Uint8List.fromList([1, 2, 3, 3, 2, 1]);
 ///
-/// final compressed = ArithmeticCoder.encode(input);
-/// final decompressed = ArithmeticCoder.decode(compressed);
+/// final ac = ArithmeticCoder(order: 1);
+/// final compressed = ac.encode(input);
+/// final decompressed = ac.decode(compressed);
 ///
 /// assert(const ListEquality().equals(input, decompressed));
 /// ```

@@ -6,12 +6,13 @@
 [![Last Commit](https://img.shields.io/github/last-commit/gmpassos/arithmetic_coder?logo=github&logoColor=white)](https://github.com/gmpassos/arithmetic_coder/commits/master)
 [![License](https://img.shields.io/github/license/gmpassos/arithmetic_coder?logo=open-source-initiative&logoColor=green)](https://github.com/gmpassos/arithmetic_coder/blob/master/LICENSE)
 
-`arithmetic_coder` is a pure Dart implementation of **adaptive arithmetic coding**, designed for efficient lossless compression of byte streams.
+`arithmetic_coder` is a pure Dart implementation of **adaptive arithmetic coding** with **context modeling**, designed for efficient lossless compression of byte streams.
 
 It combines:
 
 * 📊 Adaptive probability modeling
-* 🌲 A Fenwick Tree (Binary Indexed Tree) for fast cumulative frequencies
+* 🧠 Finite-order context models (order 0, 1, 2)
+* 🌲 Fenwick Tree (Binary Indexed Tree) for fast cumulative frequencies
 * 🔢 Bit-level I/O (BitReader / BitWriter)
 * ⚖️ Automatic rescaling to prevent overflow
 
@@ -20,10 +21,11 @@ It combines:
 ## Features
 
 * ✅ Adaptive (no pre-trained model required)
-* ⚡ Efficient O(log n) symbol updates via Fenwick tree
+* 🧠 Context modeling (order 0, 1, 2)
+* ⚡ Efficient O(log n) updates via Fenwick tree
 * 📦 Byte-level compression and decompression
 * 🔁 Streaming-friendly design
-* 🧠 Suitable for experimentation, research, and production use
+* 🔍 Deterministic decoding with mirrored context state
 
 ---
 
@@ -50,11 +52,11 @@ import 'package:arithmetic_coder/arithmetic_coder.dart';
 void main() {
   final input = Uint8List.fromList(utf8.encode('Hello world'));
 
-  final ac = ArithmeticCoder();
+  final ac = ArithmeticCoder(order: 2);
   final compressed = ac.encode(input);
 
-  print('Original: ${input.length} bytes');
-  print('Compressed: ${compressed.length} bytes');
+  print('Original   : ${input.length} bytes');
+  print('Compressed : ${compressed.length} bytes');
 }
 ```
 
@@ -65,10 +67,10 @@ void main() {
 ```dart
 import 'dart:convert';
 
-final ac = ArithmeticCoder();
+final ac = ArithmeticCoder(order: 2);
 final decompressed = ac.decode(compressed);
 
-print(utf8.decode(decompressed)); // Hello world
+print(utf8.decode(decompressed));
 ```
 
 ---
@@ -81,8 +83,8 @@ Each symbol narrows a `[low, high]` range based on its probability:
 
 ```
 range = high - low + 1
-high = low + (range * cumulative_high / total) - 1
-low  = low + (range * cumulative_low  / total)
+high = low + (range * cumulativeHigh / total) - 1
+low  = low + (range * cumulativeLow  / total)
 ```
 
 ---
@@ -97,21 +99,37 @@ To maintain precision, the coder emits bits when:
 
 ---
 
-### 3. Adaptive Model
+### 3. Context Modeling
+
+The coder adapts probabilities based on previous symbols using a finite-order Markov model:
+
+* **Order 0** → no context (global distribution)
+* **Order 1** → previous symbol
+* **Order 2** → previous two symbols
+
+Each context maintains its own adaptive frequency table.
+
+```dart
+final ac = ArithmeticCoder(order: 1);
+```
+
+---
+
+### 4. Adaptive Model
 
 Frequencies are updated after each symbol:
 
 ```dart
-fenwick.update(symbol);
+model.update(symbol);
 ```
 
 * Starts with uniform distribution
 * Learns symbol probabilities dynamically
-* Rescales when total exceeds a threshold
+* Rescales when totals exceed a threshold
 
 ---
 
-### 4. Fenwick Tree
+### 5. Fenwick Tree
 
 Efficiently supports:
 
@@ -123,35 +141,29 @@ Efficiently supports:
 
 ## Arithmetic Coding Overview
 
-**Arithmetic coding** is a lossless compression technique that represents an entire message as a single number within a fractional interval `[0, 1)`.
+**Arithmetic coding** is a lossless compression technique that encodes an entire message as a single number within a fractional interval `[0, 1)`.
 
-Instead of assigning fixed bit patterns to symbols (like Huffman coding), arithmetic coding:
+Instead of assigning fixed bit patterns to symbols (like Huffman coding), it:
 
 * Encodes the whole sequence into a continuously refined numeric range
 * Uses symbol probabilities to narrow that range step by step
-* Produces highly efficient compression, especially for skewed distributions
+* Achieves compression close to the entropy limit
 
 ### Key Idea
 
 Each symbol reduces the interval:
 
 ```
-[low, high) → narrower range based on symbol probability
+[low, high) → progressively narrower range
 ```
 
-The final number uniquely represents the entire message.
+The final value uniquely represents the entire message.
 
 ### Why It’s Powerful
 
-* Achieves compression closer to the theoretical entropy limit
+* Near-optimal compression efficiency
 * Handles fractional probabilities naturally
-* Works especially well with adaptive models
-
-### Learn More
-
-For a deeper explanation, see:
-
-* [https://en.wikipedia.org/wiki/Arithmetic_coding](https://en.wikipedia.org/wiki/Arithmetic_coding)
+* Benefits significantly from context modeling
 
 ---
 
@@ -160,6 +172,8 @@ For a deeper explanation, see:
 ### ArithmeticCoder
 
 ```dart
+ArithmeticCoder({int order = 0});
+
 Uint8List encode(Uint8List input);
 Uint8List decode(Uint8List input);
 ```
@@ -169,7 +183,8 @@ Uint8List decode(Uint8List input);
 ### Core Components
 
 * `ArithmeticCoder` → encoder/decoder
-* `Fenwick` → adaptive frequency model
+* `ContextModel` → context-aware probability model
+* `Fenwick` → frequency structure
 * `BitWriter` → bit-level output
 * `BitReader` → bit-level input
 
@@ -184,15 +199,19 @@ import 'package:arithmetic_coder/arithmetic_coder.dart';
 
 void main() {
   final text = 'Dart is awesome! ' * 100;
+  final input = Uint8List.fromList(utf8.encode(text));
 
-  final input = utf8.encode(text);
+  final ac = ArithmeticCoder(order: 2);
 
-  final encoded = ArithmeticCoder.encode(input);
-  final decoded = ArithmeticCoder.decode(encoded);
+  final encoded = ac.encode(input);
+  final decoded = ac.decode(encoded);
+  
+  final ratio = encoded.length / input.length;
 
-  print(input.length); // original size
-  print(encoded.length); // compressed size
-  print(decoded.length); // restored size
+  print('Original   : ${input.length} bytes');
+  print('Encoded    : ${encoded.length} bytes');
+  print('Decoded    : ${decoded.length} bytes');
+  print('Ratio      : $ratio');
 }
 ```
 
@@ -200,19 +219,28 @@ void main() {
 
 ## Limitations
 
-* Not optimized for SIMD or native performance (pure Dart)
+* Pure Dart (no SIMD / native optimizations)
 * No built-in file streaming (yet)
-* Uses order-0 model (no context modeling)
+* Higher memory usage for higher-order models (especially order 2)
+
+---
+
+## Roadmap
+
+* Streaming API
+* Higher-order / PPM models
+* Performance tuning
+* Optional static models
 
 ---
 
 ## Contributing
 
-Contributions are welcome!
+Contributions are welcome:
 
 * Bug reports
 * Performance improvements
-* New models (order-1, PPM, etc.)
+* New modeling strategies
 * Documentation improvements
 
 ---
