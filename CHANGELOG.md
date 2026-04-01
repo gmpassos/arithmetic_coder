@@ -1,3 +1,11 @@
+## 1.0.3
+
+- `Fenwick` - reduce memory usage:
+  - Updated `_tree` field initialization to use typed lists (`Uint8List`, `Uint16List`, `Uint32List`, `Uint64List`) based on the bit length of `maxTotal` for memory efficiency.
+  - Added private static method `_buildIntList` to create appropriate typed list for frequency storage.
+  - Adjusted `computeMaxTotal` to return `(1 << (precision ~/ 2)) - 1` instead of `1 << (precision ~/ 2)` to correctly compute maximum total frequency.
+  - Changed `_tree` initialization from `List.filled` to use `_buildIntList` in constructor.
+
 ## 1.0.2
 
 - Added context modeling support to `ArithmeticCoder`:

@@ -1,10 +1,10 @@
+import 'dart:typed_data';
+
 /// A Fenwick Tree (Binary Indexed Tree) for frequency management and cumulative sums,
 /// typically used in arithmetic coding for efficient symbol frequency updates.
 class Fenwick {
   /// Number of bits of precision used to compute [maxTotal].
   final int precision;
-
-  final List<int> _tree;
 
   /// Number of symbols managed by this Fenwick tree.
   final int size;
@@ -15,15 +15,36 @@ class Fenwick {
   /// Maximum allowed total frequency before rescaling.
   final int maxTotal;
 
+  late final List<int> _tree;
+
   /// Creates a Fenwick tree with [size] symbols and [precision] for [maxTotal] calculation.
   Fenwick(this.precision, this.size)
-    : _tree = List.filled(size + 1, 0),
-      eof = size - 1,
-      maxTotal = computeMaxTotal(precision);
+    : eof = size - 1,
+      maxTotal = computeMaxTotal(precision) {
+    _tree = _buildIntList(size + 1, maxTotal);
+  }
+
+  static List<int> _buildIntList(int length, int maxValue) {
+    final neededBits = maxValue.bitLength;
+
+    if (neededBits <= 8) {
+      return Uint8List(length);
+    } else if (neededBits <= 16) {
+      return Uint16List(length);
+    } else if (neededBits <= 32) {
+      return Uint32List(length);
+    } else if (neededBits <= 64) {
+      return Uint64List(length);
+    } else {
+      throw UnsupportedError(
+        "Cannot create a typed list for values requiring more than 64 bits> maxValue: $maxValue ; neededBits: $neededBits",
+      );
+    }
+  }
 
   /// Computes the maximum total frequency allowed for a given [precision].
   static int computeMaxTotal(int precision) {
-    var maxTotal = 1 << (precision ~/ 2);
+    var maxTotal = (1 << (precision ~/ 2)) - 1;
     return maxTotal;
   }
 
