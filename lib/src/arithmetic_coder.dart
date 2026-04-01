@@ -58,18 +58,27 @@ class ArithmeticCoder {
   /// The selected model depends on the configured [order].
   ///
   /// See [ContextModel] and [Fenwick].
-  ContextModel _buildModels() {
-    var models = _models ??= ContextModel(order, _precision, 257);
+  ContextModel _buildContextModelCached() {
+    var models = _models ??= buildContextModel(order, _precision, 257);
+    assert(models.order == order);
     models.reset();
     return models;
   }
+
+  /// Creates a new [ContextModel] with the given parameters.
+  /// Exposed to allow customization if needed.
+  ContextModel<ContextState> buildContextModel(
+    int order,
+    int precision,
+    int size,
+  ) => ContextModel(order, precision, size);
 
   /// Encodes [input] bytes into a compressed bitstream.
   ///
   /// Uses adaptive frequencies with a Fenwick tree and writes bits via [BitWriter].
   /// Appends an EOF symbol at the end of the stream.
   Uint8List encode(Uint8List input) {
-    final models = _buildModels();
+    final models = _buildContextModelCached();
     models.init();
 
     int low = 0;
@@ -130,7 +139,7 @@ class ArithmeticCoder {
   ///
   /// Uses the same adaptive model as [encode]. Stops when EOF symbol is reached.
   Uint8List decode(Uint8List input) {
-    final models = _buildModels();
+    final models = _buildContextModelCached();
     models.init();
 
     int low = 0;
@@ -138,6 +147,7 @@ class ArithmeticCoder {
 
     final bitReader = BitReader(input);
     final context = models.initialContext();
+    final symbolEOF = models.eof;
 
     var code = bitReader.readInitialCode(_precision);
 
@@ -150,7 +160,7 @@ class ArithmeticCoder {
       final value = ((code - low + 1) * model.total - 1) ~/ range;
 
       final symbol = model.findByCumulative(value);
-      if (symbol == 256) break;
+      if (symbol >= symbolEOF) break;
 
       output.add(symbol);
 

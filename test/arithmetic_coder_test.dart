@@ -1,10 +1,11 @@
 import 'dart:typed_data';
 
 import 'package:arithmetic_coder/arithmetic_coder.dart';
+import 'package:arithmetic_coder/src/context_model.dart';
 import 'package:test/test.dart';
 
 void main() {
-  for (var order = 0; order <= 2; ++order) {
+  for (var order = 0; order <= ContextModel.maxContextOrder; ++order) {
     _testsWithOrder(order);
   }
 }
@@ -12,6 +13,10 @@ void main() {
 void _testsWithOrder(int order) {
   group('ArithmeticCoder(order: $order)', () {
     final ac = ArithmeticCoder(order: order);
+
+    test('Context model order', () {
+      expect(ac.order, equals(order));
+    });
 
     test('encode and decode empty input', () {
       final input = Uint8List(0);

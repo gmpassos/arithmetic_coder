@@ -1,6 +1,6 @@
 name: arithmetic_coder
 description: Adaptive arithmetic coding for efficient lossless compression of bytes in pure Dart.
-version: 1.0.3
+version: 1.0.4
 repository: https://github.com/gmpassos/arithmetic_coder
 
 environment:

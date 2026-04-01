@@ -1,3 +1,22 @@
+## 1.0.4
+
+- `ArithmeticCoder`:
+  - Exposed `buildContextModel` method to allow customization of the context model creation.
+  - Renamed `_buildModels` to `_buildContextModelCached` and updated to use `buildContextModel`.
+  - Updated `decode` method to use `models.eof` symbol dynamically instead of hardcoded `256`.
+
+- `ContextModel` and `ContextState`:
+  - Added support for order-3 context model:
+    - Added `ContextStateOrder3` with three previous symbols.
+    - Added `ContextModelOrder3` with a 3D Fenwick tree structure and a shrink factor to reduce memory usage.
+  - Added `order` getter to `ContextState` and `ContextModel` to indicate the model order.
+  - Added static `maxContextOrder` constant (value 3) to `ContextModel`.
+  - Updated factory constructor in `ContextModel` to support order 3.
+  - Updated all context state classes to implement `order` getter.
+  - Updated all context model classes to implement `order` getter.
+  - `ContextModelOrder3`:
+    - Uses a 3D list of Fenwicks with size reduction on the 3rd dimension.
+
 ## 1.0.3
 
 - `Fenwick` - reduce memory usage:

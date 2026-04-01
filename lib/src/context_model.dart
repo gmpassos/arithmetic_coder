@@ -11,6 +11,15 @@ import 'fenwick.dart';
 /// - Order-2 → previous two symbols
 abstract class ContextState {
   const ContextState();
+
+  /// The order of this context state.
+  ///
+  /// Determines how many previous symbols are used to predict the next symbol:
+  /// - `0` → no context (symbols independent)
+  /// - `1` → depends on the previous symbol
+  /// - `2` → depends on the previous two symbols
+  /// - `3` → depends on the previous three symbols
+  int get order;
 }
 
 /// A context-based adaptive probability model used by arithmetic coding.
@@ -42,6 +51,14 @@ abstract class ContextState {
 /// - [updateContext] → updates context after each symbol
 /// - [model] → returns the frequency model for a given context
 abstract class ContextModel<C extends ContextState> {
+  /// The maximum order of the context model supported by this class.
+  ///
+  /// - `0` → no context (symbols independent)
+  /// - `1` → depends on previous symbol
+  /// - `2` → depends on previous two symbols
+  /// - `3` → depends on previous three symbols
+  static const maxContextOrder = 3;
+
   ContextModel._();
 
   /// Creates a [ContextModel] for the given [order].
@@ -58,11 +75,22 @@ abstract class ContextModel<C extends ContextState> {
         return ContextModelOrder1(precision, size) as ContextModel<C>;
       case 2:
         return ContextModelOrder2(precision, size) as ContextModel<C>;
+      case 3:
+        return ContextModelOrder3(precision, size) as ContextModel<C>;
 
       default:
         throw UnsupportedError("Unsupported order: $order");
     }
   }
+
+  /// The order of this context model.
+  ///
+  /// Determines how many previous symbols are used to predict the next symbol:
+  /// - `0` → no context (symbols independent)
+  /// - `1` → depends on the previous symbol
+  /// - `2` → depends on the previous two symbols
+  /// - `3` → depends on the previous three symbols
+  int get order;
 
   /// The EOF (end-of-stream) symbol.
   ///
@@ -103,6 +131,9 @@ abstract class ContextModel<C extends ContextState> {
 /// Context state for an order-0 model (no history).
 class ContextStateOrder0 extends ContextState {
   const ContextStateOrder0();
+
+  @override
+  int get order => 0;
 }
 
 /// Order-0 context model (no dependency on previous symbols).
@@ -125,6 +156,9 @@ class ContextModelOrder0 extends ContextModel<ContextStateOrder0> {
       super._() {
     assert(eof == _model.eof);
   }
+
+  @override
+  int get order => 0;
 
   @override
   int get totalSize => _model.size;
@@ -155,6 +189,9 @@ class ContextStateOrder1 extends ContextState {
 
   ContextStateOrder1(this.prev1);
 
+  @override
+  int get order => 1;
+
   void update(int symbol) {
     prev1 = symbol;
   }
@@ -176,6 +213,9 @@ class ContextModelOrder1 extends ContextModel<ContextStateOrder1> {
     _models = List.generate(size, (i) => Fenwick(precision, size));
     assert(eof == _models.first.eof);
   }
+
+  @override
+  int get order => 1;
 
   @override
   int get totalSize => _models.map((m) => m.size).reduce((a, b) => a + b);
@@ -214,6 +254,9 @@ class ContextStateOrder2 extends ContextState {
 
   ContextStateOrder2(this.prev2, this.prev1);
 
+  @override
+  int get order => 2;
+
   void update(int symbol) {
     prev2 = prev1;
     prev1 = symbol;
@@ -235,6 +278,9 @@ class ContextModelOrder2 extends ContextModel<ContextStateOrder2> {
     });
     assert(eof == _models.first.first.eof);
   }
+
+  @override
+  int get order => 2;
 
   @override
   int get totalSize => _models
@@ -270,5 +316,98 @@ class ContextModelOrder2 extends ContextModel<ContextStateOrder2> {
   @override
   Fenwick model(ContextStateOrder2 context) {
     return _models[context.prev2][context.prev1];
+  }
+}
+
+class ContextStateOrder3 extends ContextState {
+  int prev3;
+  int prev2;
+  int prev1;
+
+  ContextStateOrder3(this.prev3, this.prev2, this.prev1);
+
+  @override
+  int get order => 3;
+
+  void update(int symbol) {
+    prev3 = prev2;
+    prev2 = prev1;
+    prev1 = symbol;
+  }
+}
+
+class ContextModelOrder3 extends ContextModel<ContextStateOrder3> {
+  final int precision;
+  final int size;
+
+  @override
+  final int eof;
+
+  late final List<List<List<Fenwick>>> _models;
+
+  /// Factor used to reduce the size of the order-3 model.
+  ///
+  /// The full model size is divided by this value to produce a smaller,
+  /// memory-efficient table for third-order contexts.
+  final int order3ShrinkFactor;
+
+  ContextModelOrder3(this.precision, this.size, {this.order3ShrinkFactor = 32})
+    : eof = size - 1,
+      super._() {
+    _models = List.generate((size ~/ order3ShrinkFactor) + 1, (_) {
+      return List.generate(
+        size,
+        (_) => List.generate(size, (_) => Fenwick(precision, size)),
+      );
+    });
+    assert(eof == _models.first.first.first.eof);
+  }
+
+  @override
+  int get order => 3;
+
+  @override
+  int get totalSize => _models
+      .map(
+        (l1) => l1
+            .map((l2) => l2.map((m) => m.size).reduce((a, b) => a + b))
+            .reduce((a, b) => a + b),
+      )
+      .reduce((a, b) => a + b);
+
+  @override
+  void init() {
+    for (var l1 in _models) {
+      for (var l2 in l1) {
+        for (var e in l2) {
+          e.init();
+        }
+      }
+    }
+  }
+
+  @override
+  reset() {
+    for (var l1 in _models) {
+      for (var l2 in l1) {
+        for (var e in l2) {
+          e.reset();
+        }
+      }
+    }
+  }
+
+  @override
+  ContextStateOrder3 initialContext() => ContextStateOrder3(eof, eof, eof);
+
+  @override
+  void updateContext(ContextStateOrder3 prevContext, int symbol) {
+    prevContext.update(symbol);
+  }
+
+  @override
+  Fenwick model(ContextStateOrder3 context) {
+    return _models[context.prev3 ~/
+        order3ShrinkFactor][context.prev2][context.prev1];
   }
 }
