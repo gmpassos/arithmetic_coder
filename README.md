@@ -1,8 +1,10 @@
 # arithmetic_coder
 
-[![pub package](https://img.shields.io/pub/v/arithmetic_coder.svg?logo=dart\&logoColor=00b9fc)](https://pub.dev/packages/arithmetic_coder)
+[![pub package](https://img.shields.io/pub/v/arithmetic_coder.svg?logo=dart&logoColor=00b9fc)](https://pub.dev/packages/arithmetic_coder)
 [![Null Safety](https://img.shields.io/badge/null-safety-brightgreen)](https://dart.dev/null-safety)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![GitHub Tag](https://img.shields.io/github/v/tag/gmpassos/arithmetic_coder?logo=git&logoColor=white)](https://github.com/gmpassos/arithmetic_coder/releases)
+[![Last Commit](https://img.shields.io/github/last-commit/gmpassos/arithmetic_coder?logo=github&logoColor=white)](https://github.com/gmpassos/arithmetic_coder/commits/master)
+[![License](https://img.shields.io/github/license/gmpassos/arithmetic_coder?logo=open-source-initiative&logoColor=green)](https://github.com/gmpassos/arithmetic_coder/blob/master/LICENSE)
 
 `arithmetic_coder` is a pure Dart implementation of **adaptive arithmetic coding**, designed for efficient lossless compression of byte streams.
 
