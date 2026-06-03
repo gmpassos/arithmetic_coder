@@ -112,5 +112,48 @@ void _testsWithOrder(int order) {
       print('Original size: ${input.length} bytes');
       print('Encoded size: ${encoded.length} bytes');
     });
+
+    test('reuses the cached model across sequential encode/decode calls', () {
+      // The model is built once and recycled between calls; encoding several
+      // different inputs in a row must keep producing correct round-trips.
+      final inputs = <Uint8List>[
+        Uint8List.fromList([1, 2, 3, 4, 5]),
+        Uint8List.fromList(List.filled(64, 9)),
+        Uint8List.fromList(List.generate(200, (i) => (i * 7) % 256)),
+        Uint8List(0),
+        Uint8List.fromList(List.generate(256, (i) => 255 - i)),
+      ];
+
+      for (final input in inputs) {
+        final encoded = ac.encode(input);
+        final decoded = ac.decode(encoded);
+        expect(decoded, equals(input), reason: 'round-trip for $input');
+      }
+    });
+
+    test('encoding the same input twice is deterministic', () {
+      // Confirms reset/init fully clear adaptive state between runs.
+      final input = Uint8List.fromList(
+        List.generate(400, (i) => (i * 31 + 7) % 256),
+      );
+
+      final first = ac.encode(input);
+      final second = ac.encode(input);
+
+      expect(second, equals(first));
+      expect(ac.decode(second), equals(input));
+    });
+
+    test('handles inputs large enough to trigger frequency rescaling', () {
+      // 80k identical bytes pushes a context's total past maxTotal (65535),
+      // exercising Fenwick.rescale and the direct-frequency resync.
+      final input = Uint8List.fromList(List.filled(80000, 200));
+
+      final encoded = ac.encode(input);
+      final decoded = ac.decode(encoded);
+
+      expect(decoded, equals(input));
+      expect(encoded.length, lessThan(input.length));
+    });
   });
 }

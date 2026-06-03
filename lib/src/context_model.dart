@@ -181,6 +181,94 @@ class ContextModelOrder0 extends ContextModel<ContextStateOrder0> {
   Fenwick model(ContextStateOrder0 context) => _model;
 }
 
+/// Base class for context models that keep one [Fenwick] frequency tree per
+/// context, allocating each tree lazily on first use.
+///
+/// Higher orders have an enormous number of *possible* contexts (order-1 has
+/// `size`, order-2 `size²`, order-3 even more), yet any given input only ever
+/// visits a small fraction of them. Eagerly creating and [init]ializing a tree
+/// for every context therefore wastes both memory and time, dominated by the
+/// per-call cost of [init]/[reset] over millions of unused trees.
+///
+/// Instead, trees are created the first time their context is requested via
+/// [model] and are recycled through an internal pool across encode/decode
+/// runs. The output is identical to the eager model: each context still sees a
+/// freshly [Fenwick.init]ialized tree the first time it is used.
+abstract class _LazyContextModel<C extends ContextState>
+    extends ContextModel<C> {
+  /// Number of bits of precision passed to each [Fenwick] tree.
+  final int precision;
+
+  /// Number of symbols (alphabet size including EOF) per [Fenwick] tree.
+  final int size;
+
+  @override
+  final int eof;
+
+  /// One slot per context; `null` until the context is first used.
+  final List<Fenwick?> _slots;
+
+  /// Indices into [_slots] that currently hold a live tree.
+  final List<int> _active = [];
+
+  /// Recycled (zeroed) trees available for reuse, avoiding re-allocation.
+  final List<Fenwick> _pool = [];
+
+  _LazyContextModel(this.precision, this.size, int contexts)
+    : eof = size - 1,
+      _slots = List<Fenwick?>.filled(contexts, null),
+      super._();
+
+  /// Maps a [context] to its slot index in [_slots].
+  int contextIndex(C context);
+
+  @override
+  int get totalSize => _slots.length * size;
+
+  @override
+  void init() => _recycle();
+
+  @override
+  void reset() => _recycle();
+
+  /// Returns all live trees to the pool and clears their slots.
+  ///
+  /// Cost is proportional to the number of contexts actually used, not the
+  /// total number of possible contexts. Trees are not cleared here: every
+  /// tree taken from the pool is re-[Fenwick.init]ialized on acquisition,
+  /// which fully overwrites any stale state.
+  void _recycle() {
+    final active = _active;
+    if (active.isEmpty) return;
+
+    final slots = _slots;
+    final pool = _pool;
+    for (var i = 0; i < active.length; ++i) {
+      final idx = active[i];
+      pool.add(slots[idx]!);
+      slots[idx] = null;
+    }
+    active.clear();
+  }
+
+  @override
+  Fenwick model(C context) {
+    final idx = contextIndex(context);
+    final slots = _slots;
+
+    var tree = slots[idx];
+    if (tree == null) {
+      final pool = _pool;
+      tree = pool.isNotEmpty
+          ? (pool.removeLast()..init())
+          : (Fenwick(precision, size)..init());
+      slots[idx] = tree;
+      _active.add(idx);
+    }
+    return tree;
+  }
+}
+
 /// Context state for an order-1 model (depends on previous symbol).
 ///
 /// Stores the last symbol (`symbol`) and the one before it (`prev1`).
@@ -199,40 +287,12 @@ class ContextStateOrder1 extends ContextState {
 
 /// Order-1 context model (depends on the previous symbol).
 ///
-/// Maintains one frequency distribution per previous symbol.
-class ContextModelOrder1 extends ContextModel<ContextStateOrder1> {
-  final int precision;
-  final int size;
-
-  @override
-  final int eof;
-
-  late final List<Fenwick> _models;
-
-  ContextModelOrder1(this.precision, this.size) : eof = size - 1, super._() {
-    _models = List.generate(size, (i) => Fenwick(precision, size));
-    assert(eof == _models.first.eof);
-  }
+/// Maintains one lazily-allocated frequency distribution per previous symbol.
+class ContextModelOrder1 extends _LazyContextModel<ContextStateOrder1> {
+  ContextModelOrder1(int precision, int size) : super(precision, size, size);
 
   @override
   int get order => 1;
-
-  @override
-  int get totalSize => _models.map((m) => m.size).reduce((a, b) => a + b);
-
-  @override
-  void init() {
-    for (var e in _models) {
-      e.init();
-    }
-  }
-
-  @override
-  reset() {
-    for (var e in _models) {
-      e.reset();
-    }
-  }
 
   @override
   ContextStateOrder1 initialContext() => ContextStateOrder1(eof);
@@ -243,11 +303,12 @@ class ContextModelOrder1 extends ContextModel<ContextStateOrder1> {
   }
 
   @override
-  Fenwick model(ContextStateOrder1 context) {
-    return _models[context.prev1];
-  }
+  int contextIndex(ContextStateOrder1 context) => context.prev1;
 }
 
+/// Context state for an order-2 model (depends on the previous two symbols).
+///
+/// Stores the last symbol (`prev1`) and the one before it (`prev2`).
 class ContextStateOrder2 extends ContextState {
   int prev2;
   int prev1;
@@ -263,47 +324,16 @@ class ContextStateOrder2 extends ContextState {
   }
 }
 
-class ContextModelOrder2 extends ContextModel<ContextStateOrder2> {
-  final int precision;
-  final int size;
-
-  @override
-  final int eof;
-
-  late final List<List<Fenwick>> _models;
-
-  ContextModelOrder2(this.precision, this.size) : eof = size - 1, super._() {
-    _models = List.generate(size, (i) {
-      return List.generate(size, (j) => Fenwick(precision, size));
-    });
-    assert(eof == _models.first.first.eof);
-  }
+/// Order-2 context model (depends on the previous two symbols).
+///
+/// Maintains one lazily-allocated frequency distribution per `(prev2, prev1)`
+/// pair, flattened into a single `size²` slot table.
+class ContextModelOrder2 extends _LazyContextModel<ContextStateOrder2> {
+  ContextModelOrder2(int precision, int size)
+    : super(precision, size, size * size);
 
   @override
   int get order => 2;
-
-  @override
-  int get totalSize => _models
-      .map((l) => l.map((m) => m.size).reduce((a, b) => a + b))
-      .reduce((a, b) => a + b);
-
-  @override
-  void init() {
-    for (var l in _models) {
-      for (var e in l) {
-        e.init();
-      }
-    }
-  }
-
-  @override
-  reset() {
-    for (var l in _models) {
-      for (var e in l) {
-        e.reset();
-      }
-    }
-  }
 
   @override
   ContextStateOrder2 initialContext() => ContextStateOrder2(eof, eof);
@@ -314,11 +344,11 @@ class ContextModelOrder2 extends ContextModel<ContextStateOrder2> {
   }
 
   @override
-  Fenwick model(ContextStateOrder2 context) {
-    return _models[context.prev2][context.prev1];
-  }
+  int contextIndex(ContextStateOrder2 context) =>
+      context.prev2 * size + context.prev1;
 }
 
+/// Context state for an order-3 model (depends on the previous three symbols).
 class ContextStateOrder3 extends ContextState {
   int prev3;
   int prev2;
@@ -336,66 +366,23 @@ class ContextStateOrder3 extends ContextState {
   }
 }
 
-class ContextModelOrder3 extends ContextModel<ContextStateOrder3> {
-  final int precision;
-  final int size;
-
-  @override
-  final int eof;
-
-  late final List<List<List<Fenwick>>> _models;
-
+/// Order-3 context model (depends on the previous three symbols).
+///
+/// To keep the context space manageable the oldest symbol (`prev3`) is bucketed
+/// by [order3ShrinkFactor]. Trees are still allocated lazily, so only contexts
+/// actually visited consume memory.
+class ContextModelOrder3 extends _LazyContextModel<ContextStateOrder3> {
   /// Factor used to reduce the size of the order-3 model.
   ///
-  /// The full model size is divided by this value to produce a smaller,
+  /// The `prev3` dimension is divided by this value to produce a smaller,
   /// memory-efficient table for third-order contexts.
   final int order3ShrinkFactor;
 
-  ContextModelOrder3(this.precision, this.size, {this.order3ShrinkFactor = 32})
-    : eof = size - 1,
-      super._() {
-    _models = List.generate((size ~/ order3ShrinkFactor) + 1, (_) {
-      return List.generate(
-        size,
-        (_) => List.generate(size, (_) => Fenwick(precision, size)),
-      );
-    });
-    assert(eof == _models.first.first.first.eof);
-  }
+  ContextModelOrder3(int precision, int size, {this.order3ShrinkFactor = 32})
+    : super(precision, size, ((size ~/ order3ShrinkFactor) + 1) * size * size);
 
   @override
   int get order => 3;
-
-  @override
-  int get totalSize => _models
-      .map(
-        (l1) => l1
-            .map((l2) => l2.map((m) => m.size).reduce((a, b) => a + b))
-            .reduce((a, b) => a + b),
-      )
-      .reduce((a, b) => a + b);
-
-  @override
-  void init() {
-    for (var l1 in _models) {
-      for (var l2 in l1) {
-        for (var e in l2) {
-          e.init();
-        }
-      }
-    }
-  }
-
-  @override
-  reset() {
-    for (var l1 in _models) {
-      for (var l2 in l1) {
-        for (var e in l2) {
-          e.reset();
-        }
-      }
-    }
-  }
 
   @override
   ContextStateOrder3 initialContext() => ContextStateOrder3(eof, eof, eof);
@@ -406,8 +393,7 @@ class ContextModelOrder3 extends ContextModel<ContextStateOrder3> {
   }
 
   @override
-  Fenwick model(ContextStateOrder3 context) {
-    return _models[context.prev3 ~/
-        order3ShrinkFactor][context.prev2][context.prev1];
-  }
+  int contextIndex(ContextStateOrder3 context) =>
+      ((context.prev3 ~/ order3ShrinkFactor) * size + context.prev2) * size +
+      context.prev1;
 }

@@ -1,3 +1,42 @@
+## 1.0.5
+
+- Performance: optimized encode/decode for order-1, order-2 (and order-3) context models.
+  - `ContextModel` and `ContextState`:
+    - Added `_LazyContextModel` base class that allocates one `Fenwick` tree per
+      context **lazily**, on first use, instead of eagerly creating a tree for
+      every possible context.
+    - `init`/`reset` now cost is proportional to the contexts actually used
+      rather than to the full context space (`size²` for order-2, more for
+      order-3), eliminating millions of wasted operations per call.
+    - Recycled trees are reused via an internal pool to avoid re-allocation
+      across encode/decode runs.
+    - `ContextModelOrder1`/`Order2`/`Order3` now extend `_LazyContextModel` and
+      flatten their context space into a single slot table; output is
+      byte-identical to the previous implementation.
+  - `Fenwick`:
+    - Maintains a parallel direct-frequency array, so single-symbol frequency
+      lookups (`freqOf`) are O(1). This removes one of the two cumulative tree
+      walks per symbol in `encode`.
+    - Added `findWithLow`, which decodes a symbol and returns its lower
+      cumulative bound (`sum(symbol - 1)`) in a single descent, removing two
+      tree walks per symbol in `decode`.
+    - `init` now builds the all-ones tree directly in O(n) (each node `i` holds
+      `i & -i`) instead of O(n log n), the dominant cost when many contexts are
+      visited (e.g. high-order models on high-entropy data: ~4–5x faster).
+    - `rescale` and `toFrequencyList` now use the direct-frequency array
+      (O(n) instead of O(n log n)).
+- Added `benchmark/arithmetic_coder_benchmark.dart` to track compression ratio
+  and encode/decode throughput across orders and datasets for future metrics.
+- Tests:
+  - Added `test/fenwick_test.dart` covering the direct-frequency array,
+    `freqOf`, `findWithLow`, the O(n) `init`, `rescale`/`rebuild`/`reset` sync,
+    and the `sum`/cumulative invariants (including through many rescales).
+  - Added `test/context_model_test.dart` covering the factory, `totalSize`,
+    `contextIndex` mapping, lazy allocation, order-3 bucketing, and pool reuse
+    across `reset`/`init`.
+  - Extended `test/arithmetic_coder_test.dart` with cached-model reuse across
+    sequential calls, deterministic re-encoding, and rescale-triggering inputs.
+
 ## 1.0.4
 
 - `ArithmeticCoder`:

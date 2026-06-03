@@ -93,7 +93,7 @@ class ArithmeticCoder {
       final range = high - low + 1;
 
       final symLow = model.sum(symbol - 1);
-      final symHigh = model.sum(symbol);
+      final symHigh = symLow + model.freqOf(symbol);
 
       final total = model.total;
 
@@ -159,13 +159,12 @@ class ArithmeticCoder {
       final range = high - low + 1;
       final value = ((code - low + 1) * model.total - 1) ~/ range;
 
-      final symbol = model.findByCumulative(value);
+      final (symbol, symLow) = model.findWithLow(value);
       if (symbol >= symbolEOF) break;
 
       output.add(symbol);
 
-      final symLow = model.sum(symbol - 1);
-      final symHigh = model.sum(symbol);
+      final symHigh = symLow + model.freqOf(symbol);
 
       final total = model.total;
 
