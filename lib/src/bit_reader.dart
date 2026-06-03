@@ -11,21 +11,40 @@ class BitReader {
   int _bitBuffer = 0;
   int _bitCount = 0;
 
+  bool _exhausted = false;
+  int _paddingBits = 0;
+
   /// Creates a [BitReader] over the given byte [input].
   BitReader(this._input);
 
+  /// Number of bits returned after the input bytes were fully consumed.
+  ///
+  /// Once the underlying bytes run out [readBit] keeps returning `0` padding;
+  /// this counts those synthetic bits. A decoder uses it to detect malformed or
+  /// truncated streams that never contain an EOF symbol, instead of looping
+  /// forever feeding on endless zero padding.
+  int get paddingBits => _paddingBits;
+
   /// Reads a single bit (most significant bit first).
   ///
-  /// Returns `0` or `1`. If input is exhausted, returns `0`.
+  /// Returns `0` or `1`. If input is exhausted, returns `0` and counts the bit
+  /// towards [paddingBits].
   int readBit() {
     if (_bitCount == 0) {
-      _bitBuffer = _bytePos < _input.length ? _input[_bytePos++] : 0;
+      if (_bytePos < _input.length) {
+        _bitBuffer = _input[_bytePos++];
+      } else {
+        _bitBuffer = 0;
+        _exhausted = true;
+      }
       _bitCount = 8;
     }
 
     final bit = (_bitBuffer >> 7) & 1;
     _bitBuffer <<= 1;
     _bitCount--;
+
+    if (_exhausted) _paddingBits++;
 
     return bit;
   }

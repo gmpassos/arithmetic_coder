@@ -35,6 +35,17 @@ class ArithmeticCoder {
   static const int _quarter = _half >> 1;
   static const int _threeQuarter = _quarter * 3;
 
+  /// Maximum number of zero-padding bits the decoder will consume past the end
+  /// of the input before giving up.
+  ///
+  /// A well-formed stream always contains an EOF symbol, after which decoding
+  /// stops; reaching it requires reading at most [_precision] bits of look-ahead
+  /// beyond the last real bit (measured worst case is well under that). A
+  /// malformed or truncated stream that never encodes EOF would otherwise feed
+  /// on the [BitReader]'s endless zero padding and loop forever, so once padding
+  /// exceeds this generous bound the input is rejected as malformed.
+  static const int _maxDecodePadding = _precision * 2;
+
   /// Order of the context model (0, 1, or 2).
   ///
   /// Determines how many previous symbols are used to predict
@@ -154,6 +165,15 @@ class ArithmeticCoder {
     final output = <int>[];
 
     while (true) {
+      // Guard against malformed/truncated streams that never contain EOF: such
+      // input would let the decoder run forever on the reader's zero padding.
+      if (bitReader.paddingBits > _maxDecodePadding) {
+        throw FormatException(
+          'Malformed or truncated arithmetic-coded stream: EOF symbol not '
+          'found before the input was exhausted.',
+        );
+      }
+
       final model = models.model(context);
 
       final range = high - low + 1;
